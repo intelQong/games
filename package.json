@@ -6,7 +6,7 @@
   "description": "Browser deathmatch remake reusing Mini Militia maps/art (private play only).",
   "scripts": {
     "extract": "node tools/extract.js",
-    "build:client": "vite build",
+    "build:client": "vite build && sed -i 's/<script type=\"module\"/<script type=\"module\" data-cfasync=\"false\"/' dist/index.html",
     "dev:client": "vite",
     "dev:server": "node --watch server/index.js",
     "dev": "concurrently -k -n client,server -c cyan,green \"npm:dev:client\" \"npm:dev:server\"",
