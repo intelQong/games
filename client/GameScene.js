@@ -2,7 +2,12 @@ import Phaser from 'phaser';
 import { MAP_FILE, MAX_HP, WORLD_W, WORLD_H } from '../shared/constants.js';
 
 const ASSET = '/assets/game/';
-const AVATAR_H = 46; // on-screen head height
+// Cache-buster: assets keep the same filenames across re-extraction, so bump
+// this whenever assets/game/ regenerates to force browsers past a stale copy
+// (a cached old tileset makes Phaser miscount columns and garbles the map).
+const ASSET_VER = '3';
+const V = (p) => `${ASSET}${p}?v=${ASSET_VER}`;
+const AVATAR_H = 64; // on-screen character height (head+torso+legs)
 
 const hpColor = (frac) => (frac > 0.5 ? 0x4caf50 : frac > 0.25 ? 0xe0a83a : 0xd14a3a);
 
@@ -16,11 +21,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.tilemapTiledJSON('map', ASSET + MAP_FILE);
-    this.load.image('tileImg', ASSET + 'tile64Desert_new.png');
-    this.load.image('bg', ASSET + 'bgDesert_new.png');
-    this.load.image('soldier', ASSET + 'soldier.png');
-    this.load.image('blast', ASSET + 'blast_new.png');
+    this.load.tilemapTiledJSON('map', V(MAP_FILE));
+    this.load.image('tileImg', V('tile64Desert_new.png'));
+    this.load.image('bg', V('bgDesert_new.png'));
+    this.load.image('soldier', V('soldier.png'));
+    this.load.image('blast', V('blast_new.png'));
   }
 
   create() {
@@ -33,7 +38,9 @@ export class GameScene extends Phaser.Scene {
     // Tilemap.
     const map = this.make.tilemap({ key: 'map' });
     const ts = map.addTilesetImage('tiles', 'tileImg');
-    map.createLayer('tilebg', ts, 0, 0).setDepth(-5);
+    // Darken the background fill layer so foreground platforms read as solid
+    // ground against cave walls (matches the original game's depth cue).
+    map.createLayer('tilebg', ts, 0, 0).setDepth(-5).setTint(0x8a8070);
     map.createLayer('tile', ts, 0, 0).setDepth(-4);
 
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
@@ -71,8 +78,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   addEntity(player, sessionId) {
-    const scale = AVATAR_H / 118;
-    const head = this.add.image(0, 0, 'soldier').setScale(scale);
+    // Scale the composited full-body sprite to a target on-screen height.
+    const head = this.add.image(0, 0, 'soldier');
+    head.setScale(AVATAR_H / head.height);
     const gun = this.add.rectangle(0, 0, 26, 6, 0x2b2b2b).setOrigin(-0.2, 0.5);
     const isMe = sessionId === this.room.sessionId;
     const nameText = this.add
@@ -196,12 +204,17 @@ export class GameScene extends Phaser.Scene {
       this.hpBarFill.scaleX = frac;
       this.hpBarFill.setFillStyle(hpColor(frac));
     }
-    const scores = [];
-    this.room.state.players.forEach((p) => scores.push({ name: p.name, score: p.score }));
-    scores.sort((a, b) => b.score - a.score);
-    this.scoreText.setText(scores.map((s) => `${s.name}  ${s.score}`).join('\n'));
-
+    // Throttle HUD text rebuilds (scoreboard + kill feed) off the 60fps path:
+    // setText forces Phaser text re-layout, but these only change on kills.
     this.killFeed = this.killFeed.filter((f) => (f.ttl -= delta) > 0);
-    this.feedText.setText(this.killFeed.map((f) => f.text).join('\n'));
+    this.hudAccum = (this.hudAccum || 0) + delta;
+    if (this.hudAccum >= 200) {
+      this.hudAccum = 0;
+      const scores = [];
+      this.room.state.players.forEach((p) => scores.push({ name: p.name, score: p.score }));
+      scores.sort((a, b) => b.score - a.score);
+      this.scoreText.setText(scores.map((s) => `${s.name}  ${s.score}`).join('\n'));
+      this.feedText.setText(this.killFeed.map((f) => f.text).join('\n'));
+    }
   }
 }

@@ -128,33 +128,45 @@ export class GameRoom extends Room {
     }
 
     // 4) Firing (unlimited ammo; cooldown gates rate).
+    // Fetch the world's body list once per tick, not per shot.
+    const allBodies = Composite.allBodies(this.world);
     for (const [id, p] of this.state.players) {
       let cd = (this.cooldowns.get(id) || 0) - dtMs;
       const input = this.inputs.get(id) || {};
       if (!p.dead && input.fire && cd <= 0) {
-        this.fire(id, p);
+        this.fire(id, p, allBodies);
         cd = WEAPON.cooldownMs;
       }
       this.cooldowns.set(id, Math.max(0, cd));
     }
   }
 
-  fire(shooterId, shooter) {
+  fire(shooterId, shooter, allBodies) {
     const body = this.bodies.get(shooterId);
     const angle = shooter.angle;
     const ox = body.position.x;
     const oy = body.position.y;
-    const bodies = Composite.allBodies(this.world);
 
     let hitPlayerId = null;
     let endX = ox + Math.cos(angle) * WEAPON.range;
     let endY = oy + Math.sin(angle) * WEAPON.range;
 
+    // Broadphase: only the bodies the ray segment could possibly cross. The fine
+    // march below then finds the true first surface among just these few, instead
+    // of point-testing every body in the world at each 8px step.
+    const candidates = Query.ray(allBodies, { x: ox, y: oy }, { x: endX, y: endY }, 1)
+      .map((c) => c.body)
+      .filter((b) => b !== body);
+    if (candidates.length === 0) {
+      this.broadcast('shot', { x1: ox, y1: oy, x2: endX, y2: endY, hit: false });
+      return;
+    }
+
     const step = 8;
     for (let d = PLAYER_W * 0.6; d < WEAPON.range; d += step) {
       const px = ox + Math.cos(angle) * d;
       const py = oy + Math.sin(angle) * d;
-      const hits = Query.point(bodies, { x: px, y: py });
+      const hits = Query.point(candidates, { x: px, y: py });
       let stop = false;
       for (const b of hits) {
         if (b === body) continue;

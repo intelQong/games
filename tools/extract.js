@@ -126,18 +126,28 @@ async function main() {
     return { type: 'objectgroup', name: group.name, objects };
   });
 
-  // Tileset: derive columns/tilecount from image dims + margin/spacing.
+  // Tileset. The map's GIDs were authored in Tiled against the source .tsx,
+  // whose margin/spacing=2 make Tiled count 30 columns ((1984-2+2)/66 ≈ 30).
+  // But the shipped PNG is packed gapless at 64px. So we must keep 30-column
+  // GID numbering while sampling at a clean 64px pitch: crop the PNG to 30*64
+  // wide and declare margin/spacing 0. (Reading the physical 31 columns shifts
+  // every tile one step per row and turns the level into noise.)
   const meta = await sharp(apk(TILESET_IMG)).metadata();
-  const margin = 2;
-  const spacing = 2;
-  const columns = Math.floor((meta.width - 2 * margin + spacing) / (tileW + spacing));
-  const rows = Math.floor((meta.height - 2 * margin + spacing) / (tileH + spacing));
+  const margin = 0;
+  const spacing = 0;
+  const columns = Math.floor((meta.width - 2 * 2 + 2) / (tileW + 2)); // Tiled's count => 30
+  const rows = Math.floor(meta.height / tileH);
+  const cropW = columns * tileW; // 1920: drop the unused trailing column
   const tileset = {
-    firstgid: 1,
+    // firstgid 2, not 1: the packed atlas's numbering is shifted one tile from
+    // the GIDs baked into the TMX (tileIndex = gid - 2). Proven empirically —
+    // an edge-continuity sweep over cols/pitch/offset picks this mapping, and
+    // it's the only one where terrain outlines connect across tile borders.
+    firstgid: 2,
     name: 'tiles',
     image: 'tile64Desert_new.png',
-    imagewidth: meta.width,
-    imageheight: meta.height,
+    imagewidth: cropW,
+    imageheight: rows * tileH,
     tilewidth: tileW,
     tileheight: tileH,
     margin,
@@ -173,15 +183,42 @@ async function main() {
   assert(spawns.length >= 2, `expected spawn points, got ${spawns.length}`);
 
   // --- Images ---
-  copyFileSync(apk(TILESET_IMG), join(OUT, 'tile64Desert_new.png'));
+  // Crop to the 30-column tile area so Phaser derives 30 columns from the image.
+  await sharp(apk(TILESET_IMG))
+    .extract({ left: 0, top: 0, width: cropW, height: rows * tileH })
+    .toFile(join(OUT, 'tile64Desert_new.png'));
   copyFileSync(apk(BG_IMG), join(OUT, 'bgDesert_new.png'));
   copyFileSync(apk(BULLET_IMG), join(OUT, 'bullet_new.png'));
   copyFileSync(apk(BLAST_IMG), join(OUT, 'blast_new.png'));
 
-  // Soldier: crop avatarOption1.png frame out of partsTexture.png.
-  const [fx, fy, fw, fh] = parseFrame(readFileSync(apk(PARTS_PLIST), 'utf8'), 'avatarOption1.png');
-  await sharp(apk(PARTS_PNG))
-    .extract({ left: fx, top: fy, width: fw, height: fh })
+  // Soldier: composite a standing figure (head + torso + two legs) from the
+  // character parts. avatarOption1 alone is just the head; the game draws the
+  // gun separately, so arms are omitted to avoid a T-pose.
+  const plist = readFileSync(apk(PARTS_PLIST), 'utf8');
+  const cut = async (key) => {
+    const [x, y, w, h] = parseFrame(plist, key);
+    const buf = await sharp(apk(PARTS_PNG))
+      .extract({ left: x, top: y, width: w, height: h })
+      .png()
+      .toBuffer();
+    return { buf, w, h };
+  };
+  const head = await cut('avatarOption1.png'); // 122x118 face
+  const body = await cut('bodyType1.png'); //     102x112 torso
+  const leg = await cut('legType1.png'); //        42x60
+  const CW = head.w;
+  const bodyX = Math.round((CW - body.w) / 2); // centre torso under head
+  const bodyY = head.h - 24; //                   overlap the head base
+  const legY = bodyY + body.h - 14; //            legs at the torso base
+  const CH = legY + leg.h;
+  await sharp({ create: { width: CW, height: CH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([
+      { input: body.buf, left: bodyX, top: bodyY },
+      { input: leg.buf, left: bodyX + 8, top: legY },
+      { input: leg.buf, left: bodyX + body.w - leg.w - 8, top: legY },
+      { input: head.buf, left: 0, top: 0 },
+    ])
+    .png()
     .toFile(join(OUT, 'soldier.png'));
 
   rmSync(TMP, { recursive: true, force: true });
@@ -189,7 +226,7 @@ async function main() {
   console.log('Extraction complete:');
   console.log(`  map        ${MAP_OUT}  (${mapW}x${mapH} tiles, ${polys.length} collision polys, ${spawns.length} spawns)`);
   console.log(`  tileset    tile64Desert_new.png (${meta.width}x${meta.height}, ${columns}x${rows} tiles)`);
-  console.log(`  soldier    soldier.png (${fw}x${fh} @ ${fx},${fy})`);
+  console.log(`  soldier    soldier.png (${CW}x${CH}, head+torso+legs)`);
   console.log(`  + bgDesert_new.png, bullet_new.png, blast_new.png`);
 }
 

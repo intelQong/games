@@ -22,7 +22,7 @@ export const GRAVITY_SCALE = 0.0016; // Matter engine.gravity.scale (tuned)
 
 export const MAX_HP = 100;
 export const RESPAWN_MS = 2000;
-export const MAX_PLAYERS = 4;
+export const MAX_PLAYERS = 8;
 
 // Single weapon. Unlimited ammo — only the cooldown gates fire rate.
 export const WEAPON = { damage: 20, cooldownMs: 110, range: 1500 };
