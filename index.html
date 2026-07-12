@@ -2,13 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Militia Web</title>
     <style>
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; background: #1b1712; color: #f2e9d8;
         font-family: system-ui, sans-serif; overflow: hidden; }
-      #game { width: 100vw; height: 100vh; }
+      #game { width: 100vw; height: 100vh; touch-action: none; }
       #game canvas { display: block; }
       #lobby { position: fixed; inset: 0; display: flex; align-items: center;
         justify-content: center; background: radial-gradient(circle at 50% 30%, #3a2f22, #140f0a); }
@@ -28,6 +28,11 @@
       button:hover { filter: brightness(1.1); }
       #err { color: #e06b5a; font-size: 12px; min-height: 16px; margin-top: 10px; }
       .hint { font-size: 11px; color: #8c7c63; margin-top: 14px; line-height: 1.5; }
+      #disconnected { position: fixed; inset: 0; display: none; align-items: center;
+        justify-content: center; background: rgba(20, 15, 10, .82); z-index: 100; }
+      #disconnected .card { text-align: center; }
+      #disconnected h1 { color: #e06b5a; }
+      #back-to-lobby { margin-top: 18px; background: #c8792a; color: #1b1712; }
     </style>
   </head>
   <body>
@@ -48,6 +53,13 @@
         <div class="hint">
           Move: A / D &nbsp;·&nbsp; Jetpack: W or Space &nbsp;·&nbsp; Aim: mouse &nbsp;·&nbsp; Fire: click
         </div>
+      </div>
+    </div>
+    <div id="disconnected">
+      <div class="card">
+        <h1>Connection lost</h1>
+        <p>You were disconnected from the game.</p>
+        <button id="back-to-lobby">Return to lobby</button>
       </div>
     </div>
     <script type="module" src="/client/main.js"></script>
