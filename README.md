@@ -62,3 +62,21 @@ assets/game/       extracted map JSON + sprites (generated)
 ```bash
 npm test   # assert-based physics + combat self-check
 ```
+
+## Server Management (VM Deployment)
+
+When deployed on a Linux VM, the server runs as a systemd service called `mini-militia`. You can manage it using the following standard commands:
+
+```bash
+# Start the server
+sudo systemctl start mini-militia
+
+# Stop the server
+sudo systemctl stop mini-militia
+
+# Check if it's running
+sudo systemctl status mini-militia
+
+# View the server logs
+sudo journalctl -u mini-militia -f
+```
