@@ -15,7 +15,7 @@ recoverable assets (Tiled maps, tilesets, sprites) are reused.
   collision against the map's concave polygon geometry (Matter.js).
 - Hitscan combat with **unlimited ammo** (fire-rate cooldown only), HP,
   death/respawn, score, and a kill feed.
-- 2–4 player online rooms, **join by 4-char room code**.
+- Up to 8 player online rooms, **join by 4-char room code**.
 
 ## Controls
 

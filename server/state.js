@@ -14,6 +14,7 @@ export class Player extends Schema {
     this.score = 0;
     this.dead = false;
     this.facing = 1; // 1 = right, -1 = left
+    this.lastSeq = 0; // last input seq the server has processed (for client reconciliation)
   }
 }
 defineTypes(Player, {
@@ -27,6 +28,7 @@ defineTypes(Player, {
   score: 'number',
   dead: 'boolean',
   facing: 'int8',
+  lastSeq: 'uint32',
 });
 
 export class GameState extends Schema {
