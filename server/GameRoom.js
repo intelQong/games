@@ -72,6 +72,19 @@ export class GameRoom extends Room {
       this.inputs.set(client.sessionId, msg);
     });
 
+    this.onMessage('startMatch', (client) => {
+      if (this.state.status === 'waiting') {
+        this.state.status = 'playing';
+        this.state.timer = 300000; // 5 minutes
+        
+        // Reset scores and respawn all
+        for (const [id, p] of this.state.players) {
+          p.score = 0;
+          this.respawnPlayer(id);
+        }
+      }
+    });
+
     this.setSimulationInterval(() => this.update(), 1000 / 30);
   }
 
@@ -111,6 +124,20 @@ export class GameRoom extends Room {
   update() {
     const dtMs = DT * 1000;
 
+    // Handle Match Timer
+    if (this.state.status === 'playing') {
+      this.state.timer -= dtMs;
+      if (this.state.timer <= 0) {
+        this.state.timer = 0;
+        this.state.status = 'finished';
+        
+        // Auto-restart after 10s
+        this.clock.setTimeout(() => {
+          this.state.status = 'waiting';
+        }, 10000);
+      }
+    }
+
     // 1) Apply inputs -> desired velocities.
     for (const [id, p] of this.state.players) {
       const body = this.bodies.get(id);
@@ -126,11 +153,14 @@ export class GameRoom extends Room {
 
       const input = this.inputs.get(id) || {};
       let vx = 0;
-      if (input.left) vx -= MOVE_SPEED * DT;
-      if (input.right) vx += MOVE_SPEED * DT;
-
       let vy = body.velocity.y;
-      if (input.jet) vy = -JET_SPEED * DT; 
+      
+      // Only allow movement if playing or waiting (allow messing around in lobby)
+      if (this.state.status !== 'finished') {
+        if (input.left) vx -= MOVE_SPEED * DT;
+        if (input.right) vx += MOVE_SPEED * DT;
+        if (input.jet) vy = -JET_SPEED * DT; 
+      }
       Body.setVelocity(body, { x: vx, y: vy });
 
       if (typeof input.angle === 'number') {
@@ -186,7 +216,8 @@ export class GameRoom extends Room {
       let cd = (this.cooldowns.get(id) || 0) - dtMs;
       const input = this.inputs.get(id) || {};
       const weapon = WEAPONS[p.currentWeapon] || DEFAULT_WEAPON;
-      if (!p.dead && input.fire && cd <= 0) {
+      // Only allow firing during active match
+      if (!p.dead && input.fire && cd <= 0 && this.state.status === 'playing') {
         this.fire(id, p, weapon, allBodies);
         cd = weapon.cooldownMs;
       }

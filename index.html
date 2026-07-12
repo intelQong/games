@@ -2,18 +2,19 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Militia Web</title>
     <style>
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; background: #1b1712; color: #f2e9d8;
-        font-family: system-ui, sans-serif; overflow: hidden; }
+        font-family: system-ui, sans-serif; overflow: hidden; touch-action: none; 
+        -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
       #game { width: 100vw; height: 100vh; }
       #game canvas { display: block; }
       #lobby { position: fixed; inset: 0; display: flex; align-items: center;
         justify-content: center; background: radial-gradient(circle at 50% 30%, #3a2f22, #140f0a); }
       .card { background: #241d14; border: 1px solid #5a4630; border-radius: 12px;
-        padding: 28px 32px; width: 320px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+        padding: 28px 32px; width: 90%; max-width: 320px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
       .card h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: .5px; }
       .card p { margin: 0 0 18px; font-size: 13px; color: #b6a488; }
       label { display: block; font-size: 12px; margin: 12px 0 4px; color: #cdbb9c; }

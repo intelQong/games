@@ -34,6 +34,7 @@ const MENU_PNG = 'assets/hd/menuTexture.png';
 const MENU_PLIST = 'assets/hd/menuTexture.plist';
 const BULLET_IMG = 'assets/hd/bullet_new.png';
 const BLAST_IMG = 'assets/hd/blast_new.png';
+const THEME_MP3 = 'assets/presMix.mp3';
 
 // Output tile size for the game (half of the 128px source tiles).
 const GAME_TILE = 64;
@@ -121,7 +122,7 @@ async function main() {
   // Map data from modded APK (64px object coordinates).
   unzipFrom(APK_MOD, [MAP_TMX]);
   // All art from old APK (correct originals).
-  unzipFrom(APK_OLD, [TILESET_IMG, BG_IMG, PARTS_PNG, PARTS_PLIST, MENU_PNG, MENU_PLIST, BULLET_IMG, BLAST_IMG]);
+  unzipFrom(APK_OLD, [TILESET_IMG, BG_IMG, PARTS_PNG, PARTS_PLIST, MENU_PNG, MENU_PLIST, BULLET_IMG, BLAST_IMG, THEME_MP3]);
 
   // --- Map: TMX (XML) -> Tiled JSON ---
   const parser = new XMLParser({
@@ -253,6 +254,7 @@ async function main() {
   copyFileSync(apk(BLAST_IMG), join(OUT, 'blast_new.png'));
   copyFileSync(apk(PARTS_PNG), join(OUT, 'partsTexture.png'));
   copyFileSync(apk(MENU_PNG), join(OUT, 'menuTexture.png'));
+  copyFileSync(apk(THEME_MP3), join(OUT, 'theme.mp3'));
 
   // --- Atlases ---
   const partsPlist = readFileSync(apk(PARTS_PLIST), 'utf8');

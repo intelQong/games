@@ -26,6 +26,11 @@ export class GameScene extends Phaser.Scene {
     this.load.image('blast', V('blast_new.png'));
     this.load.atlas('parts', V('partsTexture.png'), V('partsTexture.json'));
     this.load.atlas('menu', V('menuTexture.png'), V('menuTexture.json'));
+    
+    // Audio
+    this.load.audio('theme', V('theme.mp3'));
+    this.load.audio('shoot', V('shoot.mp3'));
+    this.load.audio('explode', V('explode.mp3'));
   }
 
   create() {
@@ -44,7 +49,12 @@ export class GameScene extends Phaser.Scene {
 
     this.setupHud();
     this.setupInput();
+    this.setupMobileControls();
     this.setupStateSync();
+
+    // Setup Theme Music
+    this.themeMusic = this.sound.add('theme', { loop: true, volume: 0.5 });
+    this.themeMusic.play();
   }
 
   setupStateSync() {
@@ -79,9 +89,18 @@ export class GameScene extends Phaser.Scene {
 
     this.room.onMessage('shot', (m) => {
       this.tracers.push({ ...m, ttl: 90 });
+      // Play shoot sound with volume scaling based on distance
+      const me = this.me ? this.me.container : { x: WORLD_W/2, y: WORLD_H/2 };
+      const dx = m.x1 - me.x;
+      const dy = m.y1 - me.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      const vol = Math.max(0, 1 - (dist / 1500));
+      this.sound.play('shoot', { volume: vol * 0.5 });
+      
       if (m.hit) {
         const b = this.add.image(m.x2, m.y2, 'blast').setDepth(6).setScale(0.6);
         this.tweens.add({ targets: b, alpha: 0, scale: 1.1, duration: 220, onComplete: () => b.destroy() });
+        this.sound.play('explode', { volume: vol * 0.3 });
       }
     });
 
@@ -169,13 +188,64 @@ export class GameScene extends Phaser.Scene {
     this.hpLabel = this.add.text(18, this.scale.height - 24, 'HP', { ...s, fontStyle: 'bold' })
       .setOrigin(0, 0).setScrollFactor(0).setDepth(22);
 
+    this.timerText = this.add.text(this.scale.width / 2, 10, '', { ...s, fontSize: '20px', fontStyle: 'bold' })
+      .setOrigin(0.5, 0).setScrollFactor(0).setDepth(20);
+    this.statusText = this.add.text(this.scale.width / 2, 40, '', { ...s, color: '#aaaaaa' })
+      .setOrigin(0.5, 0).setScrollFactor(0).setDepth(20);
+
     this.scale.on('resize', (gameSize) => {
       this.scoreText.setPosition(gameSize.width - 12, 10);
       this.feedText.setPosition(gameSize.width - 12, 34);
       this.hpBarBg.setPosition(12, gameSize.height - 24);
       this.hpBarFill.setPosition(14, gameSize.height - 22);
       this.hpLabel.setPosition(18, gameSize.height - 24);
+      this.timerText.setPosition(gameSize.width / 2, 10);
+      this.statusText.setPosition(gameSize.width / 2, 40);
     });
+  }
+
+  setupMobileControls() {
+    this.input.addPointer(2); // Enable multi-touch
+
+    // Joy base and thumb
+    this.joyBase = this.add.circle(0, 0, 60, 0xffffff, 0.15).setDepth(100).setScrollFactor(0).setVisible(false);
+    this.joyThumb = this.add.circle(0, 0, 30, 0xffffff, 0.4).setDepth(101).setScrollFactor(0).setVisible(false);
+    
+    // Fire button
+    this.fireBtn = this.add.circle(0, 0, 36, 0xd14a3a, 0.7).setDepth(100).setScrollFactor(0).setInteractive();
+    this.fireText = this.add.text(0, 0, 'FIRE', { fontSize: '14px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
+    
+    // Grenade button
+    this.nadeBtn = this.add.circle(0, 0, 26, 0x4caf50, 0.7).setDepth(100).setScrollFactor(0).setInteractive();
+    this.nadeText = this.add.text(0, 0, 'NADE', { fontSize: '10px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
+
+    // Fullscreen button
+    this.fsBtn = this.add.rectangle(0, 0, 40, 40, 0x555555, 0.8).setDepth(100).setScrollFactor(0).setInteractive();
+    this.fsText = this.add.text(0, 0, '[  ]', { fontSize: '16px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
+    this.fsBtn.on('pointerdown', () => {
+      if (this.scale.isFullscreen) this.scale.stopFullscreen();
+      else this.scale.startFullscreen();
+    });
+
+    // Start match button
+    this.startBtn = this.add.rectangle(this.scale.width / 2, 90, 160, 40, 0x4caf50).setScrollFactor(0).setDepth(100).setInteractive();
+    this.startText = this.add.text(this.scale.width / 2, 90, 'START MATCH', { fontSize: '18px', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
+    this.startBtn.on('pointerdown', () => {
+      this.room.send('startMatch');
+    });
+
+    this.scale.on('resize', (gameSize) => {
+      this.fireBtn.setPosition(gameSize.width - 60, gameSize.height - 60);
+      this.fireText.setPosition(gameSize.width - 60, gameSize.height - 60);
+      this.nadeBtn.setPosition(gameSize.width - 130, gameSize.height - 45);
+      this.nadeText.setPosition(gameSize.width - 130, gameSize.height - 45);
+      this.fsBtn.setPosition(gameSize.width - 30, 80);
+      this.fsText.setPosition(gameSize.width - 30, 80);
+      this.startBtn.setPosition(gameSize.width / 2, 90);
+      this.startText.setPosition(gameSize.width / 2, 90);
+    });
+    // Trigger resize once to set initial positions
+    this.scale.emit('resize', this.scale.gameSize);
   }
 
   update(time, delta) {
@@ -183,18 +253,82 @@ export class GameScene extends Phaser.Scene {
 
     if (time - this.lastInputSent > 33) {
       this.lastInputSent = time;
+      
+      // Multi-touch processing
+      let joyPointer = null;
+      let aimPnt = null;
+      let isFiring = false;
+      let isNading = false;
+      
+      for (let p of this.input.manager.pointers) {
+        if (!p.isDown) continue;
+        const dxF = p.x - this.fireBtn.x;
+        const dyF = p.y - this.fireBtn.y;
+        if (dxF*dxF + dyF*dyF < 36*36) { isFiring = true; continue; }
+
+        const dxN = p.x - this.nadeBtn.x;
+        const dyN = p.y - this.nadeBtn.y;
+        if (dxN*dxN + dyN*dyN < 26*26) { isNading = true; continue; }
+        
+        if (p.y < 60) continue; // Ignore top bar
+        if (p.x > this.scale.width - 60 && p.y < 120) continue; // Ignore fullscreen btn
+        
+        if (p.x < this.scale.width / 2) joyPointer = p;
+        else aimPnt = p;
+      }
+
+      let mLeft = false, mRight = false, mJet = false;
+      if (joyPointer) {
+        this.joyBase.setVisible(true);
+        this.joyThumb.setVisible(true);
+        if (!this.joyBase.activeTouch) {
+          this.joyBase.setPosition(joyPointer.downX, joyPointer.downY);
+          this.joyBase.activeTouch = true;
+        }
+        const dx = joyPointer.x - this.joyBase.x;
+        const dy = joyPointer.y - this.joyBase.y;
+        const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 60);
+        const ang = Math.atan2(dy, dx);
+        this.joyThumb.setPosition(this.joyBase.x + Math.cos(ang)*dist, this.joyBase.y + Math.sin(ang)*dist);
+        
+        if (dist > 15) {
+          if (Math.abs(Math.cos(ang)) > 0.3) {
+            if (Math.cos(ang) < 0) mLeft = true;
+            else mRight = true;
+          }
+          if (Math.sin(ang) < -0.5) mJet = true;
+        }
+      } else {
+        this.joyBase.setVisible(false);
+        this.joyThumb.setVisible(false);
+        this.joyBase.activeTouch = false;
+      }
+
       const k = this.keys;
-      const pointer = this.input.activePointer;
       let angle = 0;
       if (this.me) {
-        const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-        angle = Math.atan2(world.y - this.me.container.y, world.x - this.me.container.x);
+        const ptr = this.input.activePointer;
+        // Desktop aim
+        if (ptr.pointerType === 'mouse') {
+           const world = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
+           angle = Math.atan2(world.y - this.me.container.y, world.x - this.me.container.x);
+           this.lastAimAngle = angle;
+        } else {
+           // Mobile aim
+           if (aimPnt) {
+             const world = this.cameras.main.getWorldPoint(aimPnt.x, aimPnt.y);
+             angle = Math.atan2(world.y - this.me.container.y, world.x - this.me.container.x);
+             this.lastAimAngle = angle;
+           } else if (this.lastAimAngle !== undefined) {
+             angle = this.lastAimAngle;
+           }
+        }
       }
       this.room.send('input', {
-        left: k.left.isDown || k.leftArrow.isDown,
-        right: k.right.isDown || k.rightArrow.isDown,
-        jet: k.jetW.isDown || k.jetUp.isDown || k.jetSpace.isDown,
-        fire: pointer.isDown,
+        left: mLeft || k.left.isDown || k.leftArrow.isDown,
+        right: mRight || k.right.isDown || k.rightArrow.isDown,
+        jet: mJet || k.jetW.isDown || k.jetUp.isDown || k.jetSpace.isDown,
+        fire: isFiring || (this.input.activePointer.isDown && this.input.activePointer.pointerType === 'mouse'),
         angle,
       });
     }
@@ -251,6 +385,35 @@ export class GameScene extends Phaser.Scene {
       scores.sort((a, b) => b.score - a.score);
       this.scoreText.setText(scores.map((s) => `${s.name}  ${s.score}`).join('\n'));
       this.feedText.setText(this.killFeed.map((f) => f.text).join('\n'));
+
+      // Update HUD state
+      const state = this.room.state;
+      if (state.status === 'playing') {
+        if (this.themeMusic && this.themeMusic.isPlaying) {
+           this.tweens.add({ targets: this.themeMusic, volume: 0, duration: 1000, onComplete: () => this.themeMusic.stop() });
+        }
+        const mins = Math.floor(state.timer / 60000);
+        const secs = Math.floor((state.timer % 60000) / 1000).toString().padStart(2, '0');
+        this.timerText.setText(`${mins}:${secs}`);
+        this.statusText.setText('');
+        this.startBtn.setVisible(false);
+        this.startText.setVisible(false);
+      } else if (state.status === 'finished') {
+        this.timerText.setText('0:00');
+        this.statusText.setText('MATCH FINISHED');
+        this.startBtn.setVisible(false);
+        this.startText.setVisible(false);
+      } else {
+        if (this.themeMusic && !this.themeMusic.isPlaying) {
+           this.themeMusic.setVolume(0);
+           this.themeMusic.play();
+           this.tweens.add({ targets: this.themeMusic, volume: 0.5, duration: 2000 });
+        }
+        this.timerText.setText('--:--');
+        this.statusText.setText('LOBBY - WAITING TO START');
+        this.startBtn.setVisible(true);
+        this.startText.setVisible(true);
+      }
     }
   }
 }

@@ -64,9 +64,13 @@ export class GameState extends Schema {
     super();
     this.players = new MapSchema();
     this.weaponDrops = new MapSchema();
+    this.status = 'waiting'; // 'waiting', 'playing', 'finished'
+    this.timer = 0; // ms remaining in match
   }
 }
 defineTypes(GameState, {
   players: { map: Player },
   weaponDrops: { map: WeaponDrop },
+  status: 'string',
+  timer: 'number',
 });
