@@ -7,8 +7,10 @@
     <style>
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; background: #1b1712; color: #f2e9d8;
-        font-family: system-ui, sans-serif; overflow: hidden; touch-action: none; 
+        font-family: system-ui, sans-serif; overflow: hidden; overscroll-behavior: none; touch-action: none; 
         -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+      #lobby button { touch-action: manipulation; }
+      #lobby input { touch-action: manipulation; }
       #game { width: 100vw; height: 100vh; }
       #game canvas { display: block; }
       #lobby { position: fixed; inset: 0; display: flex; align-items: center;

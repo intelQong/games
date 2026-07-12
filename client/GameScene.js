@@ -5,19 +5,22 @@ import { WEAPONS, DEFAULT_WEAPON } from '../shared/weapons.js';
 const ASSET = '/assets/game/';
 const ASSET_VER = '6';
 const V = (p) => `${ASSET}${p}?v=${ASSET_VER}`;
-const AVATAR_H = 64; // on-screen character height
+const AVATAR_H = 64;
 
 const hpColor = (frac) => (frac > 0.5 ? 0x4caf50 : frac > 0.25 ? 0xe0a83a : 0xd14a3a);
 
 export class GameScene extends Phaser.Scene {
   constructor() {
     super('game');
-    this.entities = new Map(); // sessionId -> { container, head, body, legs, gun, ... }
-    this.drops = new Map(); // dropId -> sprite
-    this.tracers = []; 
+    this.entities = new Map();
+    this.drops = new Map();
+    this.tracers = [];
     this.lastInputSent = 0;
     this.killFeed = [];
-    this.musicFadingOut = false; 
+    this.musicFadingOut = false;
+    this.lastAimAngle = 0;
+    this.mobileFiring = false;
+    this.mobileNading = false;
   }
 
   preload() {
@@ -27,8 +30,7 @@ export class GameScene extends Phaser.Scene {
     this.load.image('blast', V('blast_new.png'));
     this.load.atlas('parts', V('partsTexture.png'), V('partsTexture.json'));
     this.load.atlas('menu', V('menuTexture.png'), V('menuTexture.json'));
-    
-    // Audio
+
     this.load.audio('theme', V('theme.mp3'));
     this.load.audio('shoot', V('shoot.mp3'));
     this.load.audio('explode', V('explode.mp3'));
@@ -37,6 +39,12 @@ export class GameScene extends Phaser.Scene {
   create() {
     this.room = this.registry.get('room');
     this.roomCode = this.registry.get('roomCode');
+    const overlay = this.registry.get('overlay');
+    if (overlay) {
+      this.startMatchEl = overlay.querySelector('#start-match-btn');
+      this.mobileFireEl = overlay.querySelector('#mobile-fire');
+      this.mobileNadeEl = overlay.querySelector('#mobile-nade');
+    }
 
     this.add.tileSprite(0, 0, WORLD_W, WORLD_H, 'bg').setOrigin(0, 0).setDepth(-10);
 
@@ -53,7 +61,6 @@ export class GameScene extends Phaser.Scene {
     this.setupMobileControls();
     this.setupStateSync();
 
-    // Setup Theme Music
     this.themeMusic = this.sound.add('theme', { loop: true, volume: 0.5 });
     this.themeMusic.play();
   }
@@ -72,7 +79,7 @@ export class GameScene extends Phaser.Scene {
       const sprite = this.add.image(drop.x, drop.y, 'menu', weapon.sprite).setDepth(-1).setScale(0.8);
       sprite.setVisible(drop.active);
       this.drops.set(id, sprite);
-      
+
       this.tweens.add({
         targets: sprite,
         y: drop.y - 10,
@@ -81,7 +88,7 @@ export class GameScene extends Phaser.Scene {
         duration: 1500,
         ease: 'Sine.easeInOut'
       });
-      
+
       drop.listen('active', (isActive) => {
         const s = this.drops.get(id);
         if (s) s.setVisible(isActive);
@@ -90,14 +97,13 @@ export class GameScene extends Phaser.Scene {
 
     this.room.onMessage('shot', (m) => {
       this.tracers.push({ ...m, ttl: 90 });
-      // Play shoot sound with volume scaling based on distance
-      const me = this.me ? this.me.container : { x: WORLD_W/2, y: WORLD_H/2 };
+      const me = this.me ? this.me.container : { x: WORLD_W / 2, y: WORLD_H / 2 };
       const dx = m.x1 - me.x;
       const dy = m.y1 - me.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
+      const dist = Math.sqrt(dx * dx + dy * dy);
       const vol = Math.max(0, 1 - (dist / 1500));
       this.sound.play('shoot', { volume: vol * 0.5 });
-      
+
       if (m.hit) {
         const b = this.add.image(m.x2, m.y2, 'blast').setDepth(6).setScale(0.6);
         this.tweens.add({ targets: b, alpha: 0, scale: 1.1, duration: 220, onComplete: () => b.destroy() });
@@ -114,17 +120,14 @@ export class GameScene extends Phaser.Scene {
 
   addEntity(player, sessionId) {
     const container = this.add.container(player.x, player.y).setDepth(1);
-    
-    // Assemble dynamic avatar
-    // Base scale to match the previous 64px height approx
-    const sc = 0.35; 
-    
+
+    const sc = 0.35;
+
     const leg1 = this.add.image(8, 20, 'parts', player.leg).setScale(sc);
     const leg2 = this.add.image(-8, 20, 'parts', player.leg).setScale(sc).setTint(0xbbbbbb);
     const body = this.add.image(0, 0, 'parts', player.body).setScale(sc);
     const head = this.add.image(0, -30, 'parts', player.head).setScale(sc);
-    
-    // We add the weapon as a child of the container, attached to the body
+
     const weaponDef = WEAPONS[player.currentWeapon] || DEFAULT_WEAPON;
     const gun = this.add.image(10, 5, 'menu', weaponDef.sprite)
       .setScale(weaponDef.scale)
@@ -146,8 +149,7 @@ export class GameScene extends Phaser.Scene {
       this.me = ent;
       this.cameras.main.startFollow(container, true, 0.12, 0.12);
     }
-    
-    // Listen for weapon changes
+
     player.listen('currentWeapon', (newWeaponId) => {
       const wDef = WEAPONS[newWeaponId] || DEFAULT_WEAPON;
       ent.gun.setTexture('menu', wDef.sprite);
@@ -206,21 +208,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   setupMobileControls() {
-    this.input.addPointer(2); // Enable multi-touch
+    this.input.addPointer(2);
 
-    // Joy base and thumb
     this.joyBase = this.add.circle(0, 0, 60, 0xffffff, 0.15).setDepth(100).setScrollFactor(0).setVisible(false);
     this.joyThumb = this.add.circle(0, 0, 30, 0xffffff, 0.4).setDepth(101).setScrollFactor(0).setVisible(false);
-    
-    // Fire button
-    this.fireBtn = this.add.circle(0, 0, 36, 0xd14a3a, 0.7).setDepth(100).setScrollFactor(0).setInteractive();
-    this.fireText = this.add.text(0, 0, 'FIRE', { fontSize: '14px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
-    
-    // Grenade button
-    this.nadeBtn = this.add.circle(0, 0, 26, 0x4caf50, 0.7).setDepth(100).setScrollFactor(0).setInteractive();
-    this.nadeText = this.add.text(0, 0, 'NADE', { fontSize: '10px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
 
-    // Fullscreen button
+    this.fireBtn = this.add.circle(0, 0, 36, 0xd14a3a, 0.7).setDepth(100).setScrollFactor(0);
+    this.nadeBtn = this.add.circle(0, 0, 26, 0x4caf50, 0.7).setDepth(100).setScrollFactor(0);
+
     this.fsBtn = this.add.rectangle(0, 0, 40, 40, 0x555555, 0.8).setDepth(100).setScrollFactor(0).setInteractive();
     this.fsText = this.add.text(0, 0, '[  ]', { fontSize: '16px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
     this.fsBtn.on('pointerdown', () => {
@@ -228,25 +223,37 @@ export class GameScene extends Phaser.Scene {
       else this.scale.startFullscreen();
     });
 
-    // Start match button
-    this.startBtn = this.add.rectangle(this.scale.width / 2, 90, 160, 40, 0x4caf50).setScrollFactor(0).setDepth(100).setInteractive();
-    this.startText = this.add.text(this.scale.width / 2, 90, 'START MATCH', { fontSize: '18px', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
-    this.startBtn.on('pointerdown', () => {
-      this.room.send('startMatch');
-    });
-
     this.scale.on('resize', (gameSize) => {
       this.fireBtn.setPosition(gameSize.width - 60, gameSize.height - 60);
-      this.fireText.setPosition(gameSize.width - 60, gameSize.height - 60);
       this.nadeBtn.setPosition(gameSize.width - 130, gameSize.height - 45);
-      this.nadeText.setPosition(gameSize.width - 130, gameSize.height - 45);
       this.fsBtn.setPosition(gameSize.width - 30, 80);
       this.fsText.setPosition(gameSize.width - 30, 80);
-      this.startBtn.setPosition(gameSize.width / 2, 90);
-      this.startText.setPosition(gameSize.width / 2, 90);
     });
-    // Trigger resize once to set initial positions
     this.scale.emit('resize', this.scale.gameSize);
+
+    if (this.startMatchEl) {
+      this.startMatchEl.style.display = 'block';
+      this.startMatchEl.addEventListener('click', () => this.room.send('startMatch'));
+      this.startMatchEl.addEventListener('touchstart', (e) => { e.preventDefault(); this.room.send('startMatch'); });
+    }
+
+    if (this.mobileFireEl) {
+      this.mobileFireEl.addEventListener('touchstart', (e) => { e.preventDefault(); this.mobileFiring = true; });
+      this.mobileFireEl.addEventListener('touchend', (e) => { e.preventDefault(); this.mobileFiring = false; });
+      this.mobileFireEl.addEventListener('touchcancel', (e) => { this.mobileFiring = false; });
+      this.mobileFireEl.addEventListener('mousedown', () => { this.mobileFiring = true; });
+      this.mobileFireEl.addEventListener('mouseup', () => { this.mobileFiring = false; });
+      this.mobileFireEl.addEventListener('mouseleave', () => { this.mobileFiring = false; });
+    }
+
+    if (this.mobileNadeEl) {
+      this.mobileNadeEl.addEventListener('touchstart', (e) => { e.preventDefault(); this.mobileNading = true; });
+      this.mobileNadeEl.addEventListener('touchend', (e) => { e.preventDefault(); this.mobileNading = false; });
+      this.mobileNadeEl.addEventListener('touchcancel', (e) => { this.mobileNading = false; });
+      this.mobileNadeEl.addEventListener('mousedown', () => { this.mobileNading = true; });
+      this.mobileNadeEl.addEventListener('mouseup', () => { this.mobileNading = false; });
+      this.mobileNadeEl.addEventListener('mouseleave', () => { this.mobileNading = false; });
+    }
   }
 
   update(time, delta) {
@@ -254,26 +261,26 @@ export class GameScene extends Phaser.Scene {
 
     if (time - this.lastInputSent > 33) {
       this.lastInputSent = time;
-      
-      // Multi-touch processing
+
       let joyPointer = null;
       let aimPnt = null;
-      let isFiring = false;
-      let isNading = false;
-      
+      let isFiring = this.mobileFiring;
+      let isNading = this.mobileNading;
+
       for (let p of this.input.manager.pointers) {
         if (!p.isDown) continue;
-        const dxF = p.x - this.fireBtn.x;
-        const dyF = p.y - this.fireBtn.y;
-        if (dxF*dxF + dyF*dyF < 36*36) { isFiring = true; continue; }
-
-        const dxN = p.x - this.nadeBtn.x;
-        const dyN = p.y - this.nadeBtn.y;
-        if (dxN*dxN + dyN*dyN < 26*26) { isNading = true; continue; }
-        
-        if (p.y < 60) continue; // Ignore top bar
-        if (p.x > this.scale.width - 60 && p.y < 120) continue; // Ignore fullscreen btn
-        
+        if (this.fireBtn) {
+          const dxF = p.x - this.fireBtn.x;
+          const dyF = p.y - this.fireBtn.y;
+          if (dxF * dxF + dyF * dyF < 36 * 36) { isFiring = true; continue; }
+        }
+        if (this.nadeBtn) {
+          const dxN = p.x - this.nadeBtn.x;
+          const dyN = p.y - this.nadeBtn.y;
+          if (dxN * dxN + dyN * dyN < 26 * 26) { isNading = true; continue; }
+        }
+        if (p.y < 60) continue;
+        if (p.x > this.scale.width - 60 && p.y < 120) continue;
         if (p.x < this.scale.width / 2) joyPointer = p;
         else aimPnt = p;
       }
@@ -288,10 +295,9 @@ export class GameScene extends Phaser.Scene {
         }
         const dx = joyPointer.x - this.joyBase.x;
         const dy = joyPointer.y - this.joyBase.y;
-        const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 60);
+        const dist = Math.min(Math.sqrt(dx * dx + dy * dy), 60);
         const ang = Math.atan2(dy, dx);
-        this.joyThumb.setPosition(this.joyBase.x + Math.cos(ang)*dist, this.joyBase.y + Math.sin(ang)*dist);
-        
+        this.joyThumb.setPosition(this.joyBase.x + Math.cos(ang) * dist, this.joyBase.y + Math.sin(ang) * dist);
         if (dist > 15) {
           if (Math.abs(Math.cos(ang)) > 0.3) {
             if (Math.cos(ang) < 0) mLeft = true;
@@ -309,20 +315,18 @@ export class GameScene extends Phaser.Scene {
       let angle = 0;
       if (this.me) {
         const ptr = this.input.activePointer;
-        // Desktop aim
         if (ptr.pointerType === 'mouse') {
-           const world = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
-           angle = Math.atan2(world.y - this.me.container.y, world.x - this.me.container.x);
-           this.lastAimAngle = angle;
+          const world = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
+          angle = Math.atan2(world.y - this.me.container.y, world.x - this.me.container.x);
+          this.lastAimAngle = angle;
         } else {
-           // Mobile aim
-           if (aimPnt) {
-             const world = this.cameras.main.getWorldPoint(aimPnt.x, aimPnt.y);
-             angle = Math.atan2(world.y - this.me.container.y, world.x - this.me.container.x);
-             this.lastAimAngle = angle;
-           } else if (this.lastAimAngle !== undefined) {
-             angle = this.lastAimAngle;
-           }
+          if (aimPnt) {
+            const world = this.cameras.main.getWorldPoint(aimPnt.x, aimPnt.y);
+            angle = Math.atan2(world.y - this.me.container.y, world.x - this.me.container.x);
+            this.lastAimAngle = angle;
+          } else {
+            angle = this.lastAimAngle;
+          }
         }
       }
       this.room.send('input', {
@@ -334,7 +338,7 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    const lerp = 1 - Math.pow(0.001, delta / 1000); 
+    const lerp = 1 - Math.pow(0.001, delta / 1000);
     this.room.state.players.forEach((player, sessionId) => {
       const ent = this.entities.get(sessionId);
       if (!ent) return;
@@ -344,14 +348,13 @@ export class GameScene extends Phaser.Scene {
       ent.container.y += (ent.ty - ent.container.y) * lerp;
       ent.container.setVisible(!player.dead);
 
-      // Flip character parts based on facing direction
       const flip = player.facing < 0;
       ent.head.setFlipX(flip);
       ent.body.setFlipX(flip);
       ent.leg1.setFlipX(flip);
       ent.leg2.setFlipX(flip);
-      
-      ent.gun.setFlipY(flip); // Flipping weapon vertically so it's not upside down when aiming left
+
+      ent.gun.setFlipY(flip);
       ent.gun.setRotation(player.angle);
 
       const hpFrac = Math.max(0, player.hp / MAX_HP);
@@ -376,7 +379,7 @@ export class GameScene extends Phaser.Scene {
       this.hpBarFill.scaleX = frac;
       this.hpBarFill.setFillStyle(hpColor(frac));
     }
-    
+
     this.killFeed = this.killFeed.filter((f) => (f.ttl -= delta) > 0);
     this.hudAccum = (this.hudAccum || 0) + delta;
     if (this.hudAccum >= 200) {
@@ -387,7 +390,6 @@ export class GameScene extends Phaser.Scene {
       this.scoreText.setText(scores.map((s) => `${s.name}  ${s.score}`).join('\n'));
       this.feedText.setText(this.killFeed.map((f) => f.text).join('\n'));
 
-      // Update HUD state
       const state = this.room.state;
       if (state.status === 'playing') {
         if (this.themeMusic && this.themeMusic.isPlaying && !this.musicFadingOut) {
@@ -398,24 +400,21 @@ export class GameScene extends Phaser.Scene {
         const secs = Math.floor((state.timer % 60000) / 1000).toString().padStart(2, '0');
         this.timerText.setText(`${mins}:${secs}`);
         this.statusText.setText('');
-        this.startBtn.setVisible(false);
-        this.startText.setVisible(false);
+        if (this.startMatchEl) this.startMatchEl.style.display = 'none';
       } else if (state.status === 'finished') {
         this.timerText.setText('0:00');
         this.statusText.setText('MATCH FINISHED');
-        this.startBtn.setVisible(false);
-        this.startText.setVisible(false);
+        if (this.startMatchEl) this.startMatchEl.style.display = 'none';
       } else {
         if (this.themeMusic && !this.themeMusic.isPlaying) {
-           this.musicFadingOut = false;
-           this.themeMusic.setVolume(0);
-           this.themeMusic.play();
-           this.tweens.add({ targets: this.themeMusic, volume: 0.5, duration: 2000 });
+          this.musicFadingOut = false;
+          this.themeMusic.setVolume(0);
+          this.themeMusic.play();
+          this.tweens.add({ targets: this.themeMusic, volume: 0.5, duration: 2000 });
         }
         this.timerText.setText('--:--');
         this.statusText.setText('LOBBY - WAITING TO START');
-        this.startBtn.setVisible(true);
-        this.startText.setVisible(true);
+        if (this.startMatchEl) this.startMatchEl.style.display = 'block';
       }
     }
   }
