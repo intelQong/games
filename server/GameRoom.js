@@ -119,6 +119,10 @@ export class GameRoom extends Room {
 
     // 3) Read back body transforms into state.
     for (const [id, p] of this.state.players) {
+      // Ack the latest input seq so the client can reconcile its prediction,
+      // even while dead (client suspends prediction until it sees the ack clear).
+      const input = this.inputs.get(id);
+      if (input && typeof input.seq === 'number') p.lastSeq = input.seq;
       const body = this.bodies.get(id);
       if (!body || p.dead) continue;
       p.x = body.position.x;
