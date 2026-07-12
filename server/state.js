@@ -1,6 +1,24 @@
 // Colyseus schema definitions (plain-JS, no decorators).
 import { Schema, MapSchema, defineTypes } from '@colyseus/schema';
 
+export class WeaponDrop extends Schema {
+  constructor() {
+    super();
+    this.id = '';
+    this.x = 0;
+    this.y = 0;
+    this.weaponType = '';
+    this.active = true;
+  }
+}
+defineTypes(WeaponDrop, {
+  id: 'string',
+  x: 'number',
+  y: 'number',
+  weaponType: 'string',
+  active: 'boolean',
+});
+
 export class Player extends Schema {
   constructor() {
     super();
@@ -14,6 +32,14 @@ export class Player extends Schema {
     this.score = 0;
     this.dead = false;
     this.facing = 1; // 1 = right, -1 = left
+    
+    // Weapon
+    this.currentWeapon = 'magnum';
+    
+    // Outfit
+    this.head = 'head1.png';
+    this.body = 'body1.png';
+    this.leg = 'leg1.png';
   }
 }
 defineTypes(Player, {
@@ -27,14 +53,20 @@ defineTypes(Player, {
   score: 'number',
   dead: 'boolean',
   facing: 'int8',
+  currentWeapon: 'string',
+  head: 'string',
+  body: 'string',
+  leg: 'string',
 });
 
 export class GameState extends Schema {
   constructor() {
     super();
     this.players = new MapSchema();
+    this.weaponDrops = new MapSchema();
   }
 }
 defineTypes(GameState, {
   players: { map: Player },
+  weaponDrops: { map: WeaponDrop },
 });

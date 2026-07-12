@@ -4,23 +4,37 @@ const { Room } = colyseus;
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { GameState, Player } from './state.js';
+import { GameState, Player, WeaponDrop } from './state.js';
 import { createWorld, createPlayerBody, Matter, Body, Composite, Query } from './physics.js';
 import {
   MAP_FILE, DT, MOVE_SPEED, JET_SPEED, MAX_FALL,
-  MAX_HP, RESPAWN_MS, MAX_PLAYERS, WEAPON, PLAYER_W,
+  MAX_HP, RESPAWN_MS, MAX_PLAYERS, PLAYER_W,
 } from '../shared/constants.js';
+import { WEAPONS, DEFAULT_WEAPON } from '../shared/weapons.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const mapJson = JSON.parse(readFileSync(join(ROOT, 'assets', 'game', MAP_FILE), 'utf8'));
-const SPAWNS = mapJson.layers
-  .find((l) => l.name === 'objects')
-  .objects.filter((o) => o.name && o.name.startsWith('sp_p_'))
+const objectsLayer = mapJson.layers.find((l) => l.name === 'objects');
+
+const SPAWNS = objectsLayer.objects
+  .filter((o) => o.name && o.name.startsWith('sp_p_'))
   .map((o) => ({ x: o.x, y: o.y }));
+
+const WEAPON_SPAWNS = objectsLayer.objects
+  .filter((o) => o.name && o.name.startsWith('wp_'))
+  .map((o) => {
+    const wProp = o.properties?.find(p => p.name === 'weapon')?.value || '';
+    const types = wProp.split(',').map(s => s.trim()).filter(Boolean);
+    return { x: o.x, y: o.y, types };
+  });
 
 function randomSpawn() {
   return SPAWNS[Math.floor(Math.random() * SPAWNS.length)];
 }
+
+const HEADS = ['avatarOption1.png', 'avatarOption2.png', 'avatarOption3.png', 'avatarOption4.png', 'avatarOption5.png', 'avatarOption6.png'];
+const BODIES = ['bodyType1.png', 'bodyType2.png'];
+const LEGS = ['legType1.png', 'legType2.png'];
 
 export class GameRoom extends Room {
   onCreate(options) {
@@ -29,6 +43,22 @@ export class GameRoom extends Room {
     this.setMetadata({ roomCode: this.roomCode });
 
     this.setState(new GameState());
+
+    // Initialize weapon drops
+    let dropId = 0;
+    for (const sp of WEAPON_SPAWNS) {
+      if (sp.types.length === 0) continue;
+      const drop = new WeaponDrop();
+      drop.id = `drop_${dropId++}`;
+      drop.x = sp.x;
+      drop.y = sp.y;
+      // Pick a random supported weapon from this spawn point
+      const validTypes = sp.types.filter(t => WEAPONS[t]);
+      if (validTypes.length > 0) {
+        drop.weaponType = validTypes[Math.floor(Math.random() * validTypes.length)];
+        this.state.weaponDrops.set(drop.id, drop);
+      }
+    }
 
     const { engine, world } = createWorld(mapJson);
     this.engine = engine;
@@ -52,6 +82,13 @@ export class GameRoom extends Room {
     p.x = s.x;
     p.y = s.y;
     p.hp = MAX_HP;
+    
+    // Randomize outfit
+    p.head = HEADS[Math.floor(Math.random() * HEADS.length)];
+    p.body = BODIES[Math.floor(Math.random() * BODIES.length)];
+    p.leg = LEGS[Math.floor(Math.random() * LEGS.length)];
+    p.currentWeapon = DEFAULT_WEAPON.id;
+    
     this.state.players.set(client.sessionId, p);
 
     const body = createPlayerBody(s.x, s.y);
@@ -88,26 +125,42 @@ export class GameRoom extends Room {
       }
 
       const input = this.inputs.get(id) || {};
-      // Speeds are px/sec; Matter velocity is px/step => multiply by DT.
       let vx = 0;
       if (input.left) vx -= MOVE_SPEED * DT;
       if (input.right) vx += MOVE_SPEED * DT;
 
-      // Keep the falling velocity Matter accumulated; only override to thrust up.
       let vy = body.velocity.y;
-      if (input.jet) vy = -JET_SPEED * DT; // unlimited fuel
+      if (input.jet) vy = -JET_SPEED * DT; 
       Body.setVelocity(body, { x: vx, y: vy });
 
       if (typeof input.angle === 'number') {
         p.angle = input.angle;
         p.facing = Math.cos(input.angle) < 0 ? -1 : 1;
       }
+      
+      // Weapon Pickup Logic
+      for (const [dropId, drop] of this.state.weaponDrops) {
+        if (drop.active) {
+          const dx = p.x - drop.x;
+          const dy = p.y - drop.y;
+          if (dx * dx + dy * dy < 2000) { // roughly 45px radius
+            drop.active = false;
+            p.currentWeapon = drop.weaponType;
+            // Respawn drop after 15 seconds
+            this.clock.setTimeout(() => {
+              if (this.state.weaponDrops.has(dropId)) {
+                this.state.weaponDrops.get(dropId).active = true;
+              }
+            }, 15000);
+          }
+        }
+      }
     }
 
-    // 2) Step physics (Matter applies gravity + resolves polygon collisions).
+    // 2) Step physics
     Matter.Engine.update(this.engine, dtMs);
 
-    // 2b) Cap fall speed so nobody tunnels through thin geometry.
+    // 2b) Cap fall speed
     const maxFallStep = MAX_FALL * DT;
     for (const [id, p] of this.state.players) {
       const body = this.bodies.get(id);
@@ -117,7 +170,7 @@ export class GameRoom extends Room {
       }
     }
 
-    // 3) Read back body transforms into state.
+    // 3) Read back body transforms
     for (const [id, p] of this.state.players) {
       const body = this.bodies.get(id);
       if (!body || p.dead) continue;
@@ -127,76 +180,77 @@ export class GameRoom extends Room {
       p.vy = body.velocity.y;
     }
 
-    // 4) Firing (unlimited ammo; cooldown gates rate).
-    // Fetch the world's body list once per tick, not per shot.
+    // 4) Firing
     const allBodies = Composite.allBodies(this.world);
     for (const [id, p] of this.state.players) {
       let cd = (this.cooldowns.get(id) || 0) - dtMs;
       const input = this.inputs.get(id) || {};
+      const weapon = WEAPONS[p.currentWeapon] || DEFAULT_WEAPON;
       if (!p.dead && input.fire && cd <= 0) {
-        this.fire(id, p, allBodies);
-        cd = WEAPON.cooldownMs;
+        this.fire(id, p, weapon, allBodies);
+        cd = weapon.cooldownMs;
       }
       this.cooldowns.set(id, Math.max(0, cd));
     }
   }
 
-  fire(shooterId, shooter, allBodies) {
+  fire(shooterId, shooter, weapon, allBodies) {
     const body = this.bodies.get(shooterId);
-    const angle = shooter.angle;
     const ox = body.position.x;
     const oy = body.position.y;
 
-    let hitPlayerId = null;
-    let endX = ox + Math.cos(angle) * WEAPON.range;
-    let endY = oy + Math.sin(angle) * WEAPON.range;
+    for (let i = 0; i < weapon.pellets; i++) {
+      let angle = shooter.angle;
+      if (weapon.spread > 0) {
+        angle += (Math.random() - 0.5) * weapon.spread;
+      }
 
-    // Broadphase: only the bodies the ray segment could possibly cross. The fine
-    // march below then finds the true first surface among just these few, instead
-    // of point-testing every body in the world at each 8px step.
-    const candidates = Query.ray(allBodies, { x: ox, y: oy }, { x: endX, y: endY }, 1)
-      .map((c) => c.body)
-      .filter((b) => b !== body);
-    if (candidates.length === 0) {
-      this.broadcast('shot', { x1: ox, y1: oy, x2: endX, y2: endY, hit: false });
-      return;
-    }
+      let hitPlayerId = null;
+      let endX = ox + Math.cos(angle) * weapon.range;
+      let endY = oy + Math.sin(angle) * weapon.range;
 
-    const step = 8;
-    for (let d = PLAYER_W * 0.6; d < WEAPON.range; d += step) {
-      const px = ox + Math.cos(angle) * d;
-      const py = oy + Math.sin(angle) * d;
-      const hits = Query.point(candidates, { x: px, y: py });
-      let stop = false;
-      for (const b of hits) {
-        if (b === body) continue;
-        if (b.isStatic) {
-          endX = px;
-          endY = py;
-          stop = true;
-          break;
-        }
-        const tid = b.plugin && b.plugin.sessionId;
-        const target = tid && this.state.players.get(tid);
-        if (target && !target.dead) {
-          hitPlayerId = tid;
-          endX = px;
-          endY = py;
-          stop = true;
-          break;
+      const candidates = Query.ray(allBodies, { x: ox, y: oy }, { x: endX, y: endY }, 1)
+        .map((c) => c.body)
+        .filter((b) => b !== body);
+        
+      if (candidates.length > 0) {
+        const step = 8;
+        for (let d = PLAYER_W * 0.6; d < weapon.range; d += step) {
+          const px = ox + Math.cos(angle) * d;
+          const py = oy + Math.sin(angle) * d;
+          const hits = Query.point(candidates, { x: px, y: py });
+          let stop = false;
+          for (const b of hits) {
+            if (b === body) continue;
+            if (b.isStatic) {
+              endX = px;
+              endY = py;
+              stop = true;
+              break;
+            }
+            const tid = b.plugin && b.plugin.sessionId;
+            const target = tid && this.state.players.get(tid);
+            if (target && !target.dead) {
+              hitPlayerId = tid;
+              endX = px;
+              endY = py;
+              stop = true;
+              break;
+            }
+          }
+          if (stop) break;
         }
       }
-      if (stop) break;
-    }
 
-    this.broadcast('shot', { x1: ox, y1: oy, x2: endX, y2: endY, hit: !!hitPlayerId });
+      this.broadcast('shot', { x1: ox, y1: oy, x2: endX, y2: endY, hit: !!hitPlayerId });
 
-    if (hitPlayerId) {
-      const victim = this.state.players.get(hitPlayerId);
-      victim.hp -= WEAPON.damage;
-      if (victim.hp <= 0) {
-        victim.hp = 0;
-        this.killPlayer(hitPlayerId, shooterId);
+      if (hitPlayerId) {
+        const victim = this.state.players.get(hitPlayerId);
+        victim.hp -= weapon.damage;
+        if (victim.hp <= 0) {
+          victim.hp = 0;
+          this.killPlayer(hitPlayerId, shooterId);
+        }
       }
     }
   }
@@ -226,6 +280,7 @@ export class GameRoom extends Room {
     p.vy = 0;
     p.hp = MAX_HP;
     p.dead = false;
+    p.currentWeapon = DEFAULT_WEAPON.id; // Lose weapon on death
     this.respawns.delete(id);
   }
 }
