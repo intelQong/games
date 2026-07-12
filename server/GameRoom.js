@@ -82,6 +82,17 @@ export class GameRoom extends Room {
           p.score = 0;
           this.respawnPlayer(id);
         }
+
+        // Reset all weapon drops to active with a new random weapon
+        for (const [dropId, drop] of this.state.weaponDrops) {
+          // Find the original spawn config to know what types are valid
+          const original = WEAPON_SPAWNS.find(sp => Math.abs(sp.x - drop.x) < 1 && Math.abs(sp.y - drop.y) < 1);
+          const validTypes = original ? original.types.filter(t => WEAPONS[t]) : [];
+          if (validTypes.length > 0) {
+            drop.weaponType = validTypes[Math.floor(Math.random() * validTypes.length)];
+          }
+          drop.active = true;
+        }
       }
     });
 
@@ -187,10 +198,7 @@ export class GameRoom extends Room {
       }
     }
 
-    // 2) Step physics
-    Matter.Engine.update(this.engine, dtMs);
-
-    // 2b) Cap fall speed
+    // 2) Cap fall speed before stepping physics (so the body never overshoots terminal velocity)
     const maxFallStep = MAX_FALL * DT;
     for (const [id, p] of this.state.players) {
       const body = this.bodies.get(id);
@@ -200,7 +208,10 @@ export class GameRoom extends Room {
       }
     }
 
-    // 3) Read back body transforms
+    // 3) Step physics
+    Matter.Engine.update(this.engine, dtMs);
+
+    // 4) Read back body transforms
     for (const [id, p] of this.state.players) {
       const body = this.bodies.get(id);
       if (!body || p.dead) continue;
@@ -210,7 +221,7 @@ export class GameRoom extends Room {
       p.vy = body.velocity.y;
     }
 
-    // 4) Firing
+    // 5) Firing
     const allBodies = Composite.allBodies(this.world);
     for (const [id, p] of this.state.players) {
       let cd = (this.cooldowns.get(id) || 0) - dtMs;

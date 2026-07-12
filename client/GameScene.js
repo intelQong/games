@@ -16,7 +16,8 @@ export class GameScene extends Phaser.Scene {
     this.drops = new Map(); // dropId -> sprite
     this.tracers = []; 
     this.lastInputSent = 0;
-    this.killFeed = []; 
+    this.killFeed = [];
+    this.musicFadingOut = false; 
   }
 
   preload() {
@@ -389,8 +390,9 @@ export class GameScene extends Phaser.Scene {
       // Update HUD state
       const state = this.room.state;
       if (state.status === 'playing') {
-        if (this.themeMusic && this.themeMusic.isPlaying) {
-           this.tweens.add({ targets: this.themeMusic, volume: 0, duration: 1000, onComplete: () => this.themeMusic.stop() });
+        if (this.themeMusic && this.themeMusic.isPlaying && !this.musicFadingOut) {
+          this.musicFadingOut = true;
+          this.tweens.add({ targets: this.themeMusic, volume: 0, duration: 1000, onComplete: () => { this.themeMusic.stop(); this.musicFadingOut = false; } });
         }
         const mins = Math.floor(state.timer / 60000);
         const secs = Math.floor((state.timer % 60000) / 1000).toString().padStart(2, '0');
@@ -405,6 +407,7 @@ export class GameScene extends Phaser.Scene {
         this.startText.setVisible(false);
       } else {
         if (this.themeMusic && !this.themeMusic.isPlaying) {
+           this.musicFadingOut = false;
            this.themeMusic.setVolume(0);
            this.themeMusic.play();
            this.tweens.add({ targets: this.themeMusic, volume: 0.5, duration: 2000 });
