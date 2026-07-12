@@ -31,6 +31,17 @@
       button:hover { filter: brightness(1.1); }
       #err { color: #e06b5a; font-size: 12px; min-height: 16px; margin-top: 10px; }
       .hint { font-size: 11px; color: #8c7c63; margin-top: 14px; line-height: 1.5; }
+      #game-overlay { position:fixed; inset:0; pointer-events:none; z-index:999; }
+      #game-overlay > * { pointer-events:auto; }
+      #start-match-btn { display:none; position:absolute; left:50%; top:90px; transform:translateX(-50%);
+        padding:10px 32px; font-size:18px; font-weight:bold; border:none; border-radius:8px;
+        background:#4caf50; color:#fff; z-index:1000; cursor:pointer; touch-action:manipulation; }
+      #mobile-fire { display:none; position:absolute; right:24px; bottom:24px;
+        width:72px; height:72px; border-radius:50%; background:rgba(209,74,58,0.7);
+        z-index:1000; touch-action:manipulation; }
+      #mobile-nade { display:none; position:absolute; right:100px; bottom:50px;
+        width:52px; height:52px; border-radius:50%; background:rgba(76,175,80,0.7);
+        z-index:1000; touch-action:manipulation; }
     </style>
   </head>
   <body>
@@ -52,6 +63,11 @@
           Move: A / D &nbsp;·&nbsp; Jetpack: W or Space &nbsp;·&nbsp; Aim: mouse &nbsp;·&nbsp; Fire: click
         </div>
       </div>
+    </div>
+    <div id="game-overlay">
+      <button id="start-match-btn">START MATCH</button>
+      <div id="mobile-fire"></div>
+      <div id="mobile-nade"></div>
     </div>
     <script type="module" src="/client/main.js" data-cfasync="false"></script>
   </body>
