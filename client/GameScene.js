@@ -39,12 +39,11 @@ export class GameScene extends Phaser.Scene {
   create() {
     this.room = this.registry.get('room');
     this.roomCode = this.registry.get('roomCode');
-    const overlay = this.registry.get('overlay');
-    if (overlay) {
-      this.startMatchEl = overlay.querySelector('#start-match-btn');
-      this.mobileFireEl = overlay.querySelector('#mobile-fire');
-      this.mobileNadeEl = overlay.querySelector('#mobile-nade');
-    }
+
+    // DOM references for native event handling
+    this.startMatchBtn = document.getElementById('start-match-btn');
+    this.mobileFireEl = document.getElementById('mobile-fire');
+    this.mobileNadeEl = document.getElementById('mobile-nade');
 
     this.add.tileSprite(0, 0, WORLD_W, WORLD_H, 'bg').setOrigin(0, 0).setDepth(-10);
 
@@ -231,28 +230,24 @@ export class GameScene extends Phaser.Scene {
     });
     this.scale.emit('resize', this.scale.gameSize);
 
-    if (this.startMatchEl) {
-      this.startMatchEl.style.display = 'block';
-      this.startMatchEl.addEventListener('click', () => this.room.send('startMatch'));
-      this.startMatchEl.addEventListener('touchstart', (e) => { e.preventDefault(); this.room.send('startMatch'); });
+    // Wire static HTML overlay buttons via native DOM events
+    if (this.startMatchBtn) {
+      this.startMatchBtn.style.display = 'block';
+      this.startMatchBtn.addEventListener('click', () => this.room.send('startMatch'));
     }
-
     if (this.mobileFireEl) {
-      this.mobileFireEl.addEventListener('touchstart', (e) => { e.preventDefault(); this.mobileFiring = true; });
-      this.mobileFireEl.addEventListener('touchend', (e) => { e.preventDefault(); this.mobileFiring = false; });
-      this.mobileFireEl.addEventListener('touchcancel', (e) => { this.mobileFiring = false; });
-      this.mobileFireEl.addEventListener('mousedown', () => { this.mobileFiring = true; });
-      this.mobileFireEl.addEventListener('mouseup', () => { this.mobileFiring = false; });
-      this.mobileFireEl.addEventListener('mouseleave', () => { this.mobileFiring = false; });
+      this.mobileFireEl.style.display = 'block';
+      const setF = (v) => (e) => { e.preventDefault(); this.mobileFiring = v; };
+      this.mobileFireEl.addEventListener('touchstart', setF(true), { passive: false });
+      this.mobileFireEl.addEventListener('touchend', setF(false), { passive: false });
+      this.mobileFireEl.addEventListener('touchcancel', () => { this.mobileFiring = false; });
     }
-
     if (this.mobileNadeEl) {
-      this.mobileNadeEl.addEventListener('touchstart', (e) => { e.preventDefault(); this.mobileNading = true; });
-      this.mobileNadeEl.addEventListener('touchend', (e) => { e.preventDefault(); this.mobileNading = false; });
-      this.mobileNadeEl.addEventListener('touchcancel', (e) => { this.mobileNading = false; });
-      this.mobileNadeEl.addEventListener('mousedown', () => { this.mobileNading = true; });
-      this.mobileNadeEl.addEventListener('mouseup', () => { this.mobileNading = false; });
-      this.mobileNadeEl.addEventListener('mouseleave', () => { this.mobileNading = false; });
+      this.mobileNadeEl.style.display = 'block';
+      const setN = (v) => (e) => { e.preventDefault(); this.mobileNading = v; };
+      this.mobileNadeEl.addEventListener('touchstart', setN(true), { passive: false });
+      this.mobileNadeEl.addEventListener('touchend', setN(false), { passive: false });
+      this.mobileNadeEl.addEventListener('touchcancel', () => { this.mobileNading = false; });
     }
   }
 
@@ -400,11 +395,11 @@ export class GameScene extends Phaser.Scene {
         const secs = Math.floor((state.timer % 60000) / 1000).toString().padStart(2, '0');
         this.timerText.setText(`${mins}:${secs}`);
         this.statusText.setText('');
-        if (this.startMatchEl) this.startMatchEl.style.display = 'none';
+        if (this.startMatchBtn) this.startMatchBtn.style.display = 'none';
       } else if (state.status === 'finished') {
         this.timerText.setText('0:00');
         this.statusText.setText('MATCH FINISHED');
-        if (this.startMatchEl) this.startMatchEl.style.display = 'none';
+        if (this.startMatchBtn) this.startMatchBtn.style.display = 'none';
       } else {
         if (this.themeMusic && !this.themeMusic.isPlaying) {
           this.musicFadingOut = false;
@@ -414,7 +409,10 @@ export class GameScene extends Phaser.Scene {
         }
         this.timerText.setText('--:--');
         this.statusText.setText('LOBBY - WAITING TO START');
-        if (this.startMatchEl) this.startMatchEl.style.display = 'block';
+        if (this.startMatchBtn) {
+          this.startMatchBtn.style.display = 'block';
+          this.startMatchBtn.textContent = 'START MATCH';
+        }
       }
     }
   }
