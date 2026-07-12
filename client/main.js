@@ -55,18 +55,19 @@ function startGame(room, roomCode) {
   // Create HTML overlay for reliable mobile touch buttons
   const overlay = document.createElement('div');
   overlay.id = 'game-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:999';
   overlay.innerHTML = `
     <button id="start-match-btn" style="display:none; position:absolute; left:50%; top:90px; transform:translateX(-50%);
       padding:10px 32px; font-size:18px; font-weight:bold; border:none; border-radius:8px;
-      background:#4caf50; color:#fff; z-index:200; cursor:pointer; touch-action:manipulation;">START MATCH</button>
+      background:#4caf50; color:#fff; z-index:1000; cursor:pointer; touch-action:manipulation; pointer-events:auto;">START MATCH</button>
     <div id="mobile-fire" style="display:none; position:absolute; right:24px; bottom:24px;
       width:72px; height:72px; border-radius:50%; background:rgba(209,74,58,0.7);
-      z-index:200; touch-action:manipulation;"></div>
+      z-index:1000; touch-action:manipulation; pointer-events:auto;"></div>
     <div id="mobile-nade" style="display:none; position:absolute; right:100px; bottom:50px;
       width:52px; height:52px; border-radius:50%; background:rgba(76,175,80,0.7);
-      z-index:200; touch-action:manipulation;"></div>
+      z-index:1000; touch-action:manipulation; pointer-events:auto;"></div>
   `;
-  document.getElementById('game').appendChild(overlay);
+  document.body.appendChild(overlay);
 
   const game = new Phaser.Game({
     type: Phaser.AUTO,
